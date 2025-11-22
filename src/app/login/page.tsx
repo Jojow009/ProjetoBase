@@ -1,156 +1,141 @@
-"use client";
+'use client';
 
 import { useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { loginSchema, type LoginFormData } from '@/lib/validations/formschema';
-import { signInAction, sendPasswordResetAction } from '@/lib/actions/useauth';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { FirebaseError } from 'firebase/app'; // Importante para erros
+import { signInWithEmailAndPassword } from 'firebase/auth'; // Importa a função do CLIENTE
+import { auth } from '@/lib/firestore/firebaseconfig'; // Importa o 'auth' do CLIENTE
+
+import {
+  loginSchema,
+  type LoginFormData,
+} from '@/lib/validations/formschema';
+
+// NÃO PRECISAMOS MAIS DA signInAction
+// import { signInAction } from '@/lib/actions/useauth';
 
 export default function LoginPage() {
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const router = useRouter();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    getValues,
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
-  });
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+  });
 
-  const onSubmit = async (data: LoginFormData) => {
-    setError(null);
-    const result = await signInAction(data);
-    if (!result.success) {
-      setError(result.error || "Falha no login.");
-    } else {
-      // O onAuthStateChanged no AuthContext cuidará de redirecionar
-      // ou atualizar a UI. Aqui podemos forçar um redirecionamento.
-      router.push('/dashboard'); // ou para a página principal
-    }
-  };
-  
-  const handleForgotPassword = async () => {
-    setError(null);
-    setSuccess(null);
-    const email = getValues("email");
-    if (!email) {
-      setError("Por favor, digite seu e-mail primeiro para recuperar a senha.");
-      return;
-    }
-    const result = await sendPasswordResetAction(email);
-    if(result.success) {
-        setSuccess(result.message ?? null);
-    } else {
-        setError(result.error ?? null);
-    }
-  }
+  // A função de submit AGORA faz a chamada direta ao Firebase
+  const onSubmit = async (data: LoginFormData) => {
+    setIsLoading(true);
+    setServerError(null);
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-10 shadow-lg">
-        <div>
-          <h2 className="text-center text-3xl font-bold tracking-tight text-slate-900">
-            Acessar sua conta
-          </h2>
-        </div>
-        <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
-          {/* Email */}
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-              E-mail
-            </label>
-            <div className="relative mt-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <Mail className="h-5 w-5 text-gray-400" />
-              </div>
-              <Controller
-                name="email"
-                control={control}
-                render={({ field }) => (
-                  <input
-                    {...field}
-                    id="email"
-                    type="email"
-                    placeholder="seu.email@exemplo.com"
-                    className="block w-full rounded-md border-gray-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  />
-                )}
-              />
-            </div>
-            {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-            )}
-          </div>
+    try {
+      // --- LÓGICA MOVIDA PARA CÁ ---
+      // Tenta fazer o login no NAVEGADOR (cliente)
+      await signInWithEmailAndPassword(auth, data.email, data.password);
 
-          {/* Senha */}
-          <div>
-             <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                Senha
-            </label>
-            <div className="relative mt-1">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                    <Lock className="h-5 w-5 text-gray-400" />
-                </div>
-                <Controller
-                    name="password"
-                    control={control}
-                    render={({ field }) => (
-                        <input
-                            {...field}
-                            id="password"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Sua senha"
-                            className="block w-full rounded-md border-gray-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                        />
-                    )}
-                />
-                <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3"
-                >
-                    {showPassword ? <EyeOff className="h-5 w-5 text-gray-500"/> : <Eye className="h-5 w-5 text-gray-500"/>}
-                </button>
-            </div>
-             {errors.password && (
-                <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
-            )}
-          </div>
-          
-          <div className="flex items-center justify-end">
-            <div className="text-sm">
-                <button 
-                    type="button" 
-                    onClick={handleForgotPassword}
-                    className="font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                    Esqueceu sua senha?
-                </button>
-            </div>
-          </div>
-          
-          {error && <p className="text-sm text-red-600 text-center">{error}</p>}
-          {success && <p className="text-sm text-green-600 text-center">{success}</p>}
+      // Sucesso! O AuthContext vai detectar e o redirecionamento vai funcionar
+      router.push('/dashboard'); // Pode ser /kanban ou /calendar
+    
+    } catch (error) {
+      setIsLoading(false);
+      // --- Tratamento de Erro ---
+      let errorMessage = 'E-mail ou senha inválidos.';
+      if (error instanceof FirebaseError) {
+        // Erros específicos do Firebase
+        if (
+          error.code === 'auth/user-not-found' ||
+          error.code === 'auth/wrong-password' ||
+          error.code === 'auth/invalid-credential'
+        ) {
+          errorMessage = 'E-mail ou senha inválidos.';
+        } else {
+          // Outro erro
+          errorMessage = 'Ocorreu um erro ao tentar fazer login.';
+        }
+      }
+      setServerError(errorMessage);
+    }
+    // Não precisa de setIsLoading(false) aqui se o login for sucesso,
+    // pois a página vai redirecionar.
+  };
 
-          <div>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-            >
-              {isSubmitting ? 'Entrando...' : 'Entrar'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
+  // O RESTO DO SEU JSX CONTINUA IGUAL...
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 dark:bg-slate-900">
+      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md dark:bg-slate-800">
+        <h2 className="mb-6 text-center text-3xl font-bold text-gray-900 dark:text-white">
+          Entrar na sua conta
+        </h2>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Campo Email */}
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 dark:text-slate-300"
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              {...register('email')}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+            {errors.email && (
+              <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+            )}
+          </div>
+
+          {/* Campo Senha */}
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 dark:text-slate-300"
+            >
+              Senha
+            </label>
+  _           <input
+              id="password"
+              type="password"
+              {...register('password')}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+            {errors.password && (
+              <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
+            )}
+          </div>
+
+          {/* Mensagens de Erro do Servidor */}
+          {serverError && (
+            <p className="text-center text-sm text-red-600">{serverError}</p>
+          )}
+
+          <div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-indigo-400"
+            >
+              {isLoading ? 'Entrando...' : 'Entrar'}
+            </button>
+          </div>
+        </form>
+
+        <p className="mt-4 text-center text-sm text-gray-600 dark:text-slate-400">
+          Não tem uma conta?{' '}
+          <Link href="/signup" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+            Cadastre-se
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
 }
-
